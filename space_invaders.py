@@ -16,6 +16,7 @@ WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)  # For explosions
 
 # Player
 PLAYER_WIDTH = 50
@@ -32,6 +33,10 @@ ENEMY_DROP_SPEED = 10
 BULLET_WIDTH = 5
 BULLET_HEIGHT = 15
 BULLET_SPEED = 7
+
+# Explosion
+EXPLOSION_FRAMES = 5
+EXPLOSION_SPEED = 4
 
 # Fonts
 FONT = pygame.font.Font(None, 36)
@@ -65,14 +70,14 @@ class Player(pygame.sprite.Sprite):
         player_bullets.add(bullet)
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, speed):
         super().__init__()
         self.image = pygame.Surface([ENEMY_WIDTH, ENEMY_HEIGHT])
         self.image.fill(RED)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
-        self.speed_x = ENEMY_SPEED
+        self.speed_x = speed
 
     def update(self):
         self.rect.x += self.speed_x
@@ -94,6 +99,26 @@ class PlayerBullet(pygame.sprite.Sprite):
         if self.rect.bottom < 0:
             self.kill()
 
+class Explosion(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface([ENEMY_WIDTH, ENEMY_HEIGHT])
+        self.image.fill(YELLOW)
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.frame = 0
+
+    def update(self):
+        self.frame += 1
+        if self.frame >= EXPLOSION_FRAMES * EXPLOSION_SPEED:
+            self.kill()
+        else:
+            # Make the explosion flicker
+            if self.frame % EXPLOSION_SPEED < EXPLOSION_SPEED // 2:
+                self.image.fill(YELLOW)
+            else:
+                self.image.fill((0,0,0)) # Transparent
+
 # Game setup
 all_sprites = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
@@ -102,17 +127,34 @@ player_bullets = pygame.sprite.Group()
 player = Player()
 all_sprites.add(player)
 
-def spawn_enemies(rows, cols):
+# Level Data (rows, cols, enemy_speed)
+level_data = [
+    (5, 10, 1),  # Level 1: 5 rows, 10 columns, speed 1
+    (6, 12, 1.5), # Level 2: 6 rows, 12 columns, speed 1.5
+    (7, 14, 2)   # Level 3: 7 rows, 14 columns, speed 2
+]
+
+current_level = 0
+score = 0
+game_over = False
+
+def spawn_enemies(rows, cols, enemy_speed):
     for row in range(rows):
         for col in range(cols):
-            enemy = Enemy(50 + col * 60, 50 + row * 60)
+            enemy = Enemy(50 + col * 60, 50 + row * 60, enemy_speed)
             all_sprites.add(enemy)
             enemies.add(enemy)
 
-spawn_enemies(5, 10) # 5 rows, 10 columns of enemies
+def start_level(level):
+    global enemies, current_level
+    enemies = pygame.sprite.Group()  # Clear existing enemies
+    all_sprites.empty()              # Clear all sprites
+    all_sprites.add(player)          # Add player back
 
-score = 0
-game_over = False
+    rows, cols, enemy_speed = level_data[level]
+    spawn_enemies(rows, cols, enemy_speed)
+
+start_level(current_level)
 
 # Game loop
 running = True
@@ -133,11 +175,17 @@ while running:
         hits = pygame.sprite.groupcollide(enemies, player_bullets, True, True)
         for hit in hits:
             score += 10 # Increase score for each hit
+            explosion = Explosion(hit.rect.centerx, hit.rect.centery)
+            all_sprites.add(explosion)
 
         # Check if all enemies are defeated
         if not enemies:
-            game_over = True
-            print("YOU WIN!")
+            current_level += 1
+            if current_level < len(level_data):
+                start_level(current_level)
+            else:
+                game_over = True
+                print("YOU WIN!")
 
         # Check for enemy reaching player's level (or bottom of screen)
         for enemy in enemies:
